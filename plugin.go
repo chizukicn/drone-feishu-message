@@ -1,8 +1,8 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"os"
 
@@ -110,25 +110,39 @@ func (p *Plugin) Exec() error {
 	}
 
 	client := feishu.NewClient(p.Config.AccessToken, p.Config.Secret)
-	text := feishu.NewText(fmt.Sprintf("* Message: %v* Detail: %v \n* Branch: %v \n* Author: %v(%v) \n",
-		p.Drone.Commit.Message,
-		p.Drone.Commit.Sha,
-		p.Drone.Commit.Branch,
-		p.Drone.Commit.Author.Name,
-		p.Drone.Commit.Author.Email,
-	))
-	a := feishu.NewA("Click To The Build Detail Page", p.Drone.Build.Link)
-	at := feishu.NewAT("all")
-	line := []feishu.PostItem{text, a, at}
-	msg := feishu.NewPostMessage()
-	// p.Drone.Repo.FullName + " build " + p.Drone.Build.Status + "(takes" +
-	msg.SetZHTitle(fmt.Sprintf("### %v build %v",
-		p.Drone.Repo.FullName,
-		p.Drone.Build.Status,
-	)).
-		AppendZHContent(line)
 
-	client.Send(msg)
+	msg := feishu.NewInteractiveMessage()
+
+	pluginEnv := GetPluginEnv()
+
+	card := (Card{}).Build(
+		p.Drone.Repo.ShortName,
+		p.Drone.Commit.Branch,
+		p.Drone.Commit.Author.Username,
+		p.Drone.Commit.Author.Email,
+		p.Drone.Build.Status,
+		p.Drone.Commit.Message,
+		p.Drone.Commit.Link,
+		p.Drone.Build.Link,
+		pluginEnv.PluginCardTitle,
+		pluginEnv.PluginSuccessImgKey,
+		pluginEnv.PluginFailureImgKey,
+		pluginEnv.PluginPoweredByImgKey,
+		pluginEnv.PluginPoweredByImgAlt,
+	)
+
+	buf, err := json.Marshal(card)
+
+	if err != nil {
+		log.Println("json marshal error:", err)
+		return err
+	}
+
+	msg.SetCard(string(buf))
+
+	log.Println("send message:", string(buf))
+
+	_, _, err = client.Send(msg)
 
 	if err == nil {
 		log.Println("send message success!")
